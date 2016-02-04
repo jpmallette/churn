@@ -1,130 +1,106 @@
-# Purpose : sample on how to prepare data and do prediction. The real preparation
-# involved more work by was done using SAS and SAS Enterprise Miner.
-# This code convert some SAS code into R code. The real work involed : 
-#  - more exploration (correlation)
-#  - different methods for selecting variables (stepwise, randomForest)
-#  - more data preparation configuration test (standardize & center, imputation methods)
-#  - many more algorithm test & tuning and data preparation base on the
-# quality of each algorithm : Neural Network, Random Forest, Gradient Boosting, 
-# SVM, logistic regression.
-#  - customized metric : Sensitivity * .30 + Specificity * .30 + misclassification * .40
+##########################################################################################################
+##  Author : Jean-Philippe                                                                               #
+##                                                                                                       #
+##  Purpose : sample on how to prepare data and do prediction. The real preparation                      #
+##  involved more work and was done using SAS and SAS Enterprise Miner.                                  #
+##  This code convert some SAS code into R code. The real work involed :                                 #
+##                                                                                                       #
+##  - more exploration (correlation, descriptive statistics,tree for                                     #
+##    meaningful variables and interaction)                                                              #
+##  - consider and shrink categorical variables with tree                                                #                                                    #
+##  - different methods for selecting variables (stepwise, randomForest)                                 #
+##  - more data preparation (different imputation methods, log variables)                                # 
+##  - many more algorithm test & tuning and data preparation base on the                                 #
+##    quality of each algorithm : Neural Network, Random Forest, Gradient Boosting,                      #
+##    SVM, logistic regression.                                                                          #
+##  - customized metric : Sensitivity * .30 + Specificity * .30 + misclassification * .40                # 
+##########################################################################################################
 
 # Initialisation ---------------------------------------------------------------
-setwd("/Users/jpmallette/Desktop/Project/Churn/")
+setwd("/Users/jpmallette/Documents/Churn/")
 library(caret)
+library(doMC)
+library(MASS)
+library (party)
+library(DMwR)
+library(randomForest)
+library(tree)
+library(rpart)
+library(partykit)
 source('function.r')
 
 set.seed(998)
 registerDoMC(cores = 4) # parallel processing
 
-# read and rename training data
-churn_train <- read.csv("churn_train.csv")
-churn_test <- read.csv("churn_test.csv")
-names(churn_train) <- tolower(names(churn_train))
-names(churn_test) <- tolower(names(churn_test))
+# read and rename
+churn <- read.csv("churn_train.csv")
+names(churn) <- tolower(names(churn))
 
+# Data split ---------------------------------------------------------------
+trainIndex <- createDataPartition(churn$churn, p = .6,
+                                  list = FALSE,
+                                  times = 1)
+churn_train <- churn[ trainIndex,]
+churn_validation  <- churn[-trainIndex,]
 
 # Quick Data exploration----------------------------------------------------
-
-attach(churn_train)
 dim(churn_train)
 str(churn_train)
 summary(churn_train)
 sapply(churn_train,table)
 sapply(churn_train, function(x) sum(is.na(x)))
 
-# Data Preparation ----------------------------------------------------
+# Quick Data preparation ----------------------------------------------------
+churn_train <- remove.clientid(churn_train)
+churn_train <- false_missing_value(churn_train)
+churn_train <- churn_as_factor(churn_train)
+churn_train <- integer_to_numeric_var(churn_train)
+churn_train <- new.variables(churn_train)
+churn_train <- new.interaction.variables(churn_train)
+churn_train <- delete_variables_too_many_missing_value(churn_train)
 
-# remove clientid
-churn_train <- churn_train[ , -which(names(churn_train %in% 'clientid'))]
-
-# Treating false missing value & aberante value 
-churn_train$eqdays <- ifelse(churn_train$eqdays < 0, 0,churn_train$eqdays)
-
-# Transform required variables to factor. See in the documentation dictionary
-churn_train$churn <- as.factor(churn_train$churn)
-
-# shorten factor variables
-
-# creation of log variables
-
-# creation of new variables
-new_variables <- new.variables(churn_train)
-churn_train <- data.frame(churn_train,new_variables)
-
-# creation of interaction variables
-new_interaction_variables <-new.interaction.variables(churn_train)
-churn_train <- data.frame(churn_train,new_interaction_variables)
+table(sapply(churn_train,class))
 
 # Model Selection ----------------------------------------------------
+# first test only consider numeric variables
+numeric_features_churn <- churn_train[,sapply(churn_train,is.numeric)]
+numeric_features_churn$churn <- churn_train$churn
 
-# stepwise if needed 
+table(sapply(numeric_features_churn,class))
 
-# Random Forest
+# Quick variable selection with tree. 
+important_features <- variables_selection_tree(numeric_features_churn)
 
-preProcess(churn_train, 
-            method = c("center", "scale","medianImpute"),
-            pcaComp = NULL,
-            metric = 'Accuracy',
-            na.remove = TRUE) 
-           
-rfGrid <-  expand.grid(.mtry = c(2, 4, 8, 16))
+# Quick prediction with random Forest
+numeric_features_subset <- subset(numeric_features_churn, select = important_features)
+numeric_features_subset <- data.frame(apply(numeric_features_subset,
+                                            2,median.imputation))
 
-rf_model<-train(churn~.,data=training,method="rf",
-                trControl=trainControl(method="cv",number=10),
-                prox=TRUE,allowParallel=TRUE,
-                na.action = na.omit(),
-                n.trees = (1:30)*50,
-                tuneGrid = rfGrid)
+rf_model <- train(x = numeric_features_subset,
+                 y = churn_train$churn,
+                 preProcess = c('scale','center'),
+                 method = "rf",
+                 ntree=1000)
 
-cbind(varImp(fm),importance(rf_model$finalModel))
-summary(fm)
+# Validation Result -------------------------------------------------------
 
-# Model Prediction -------------------------------------------------
+churn_validation <- dataPreparationValidation(churn_validation) 
+validation_features <- subset(churn_validation, select = important_features)
+validation_predictor <- churn_validation$churn
+  
+test_pred <- predict(rf_model,newdata =  validation_features)
 
-predict(rf_model, newdata = churn_test)
+confusion <- confusionMatrix(data = test_pred,reference = churn_validation$churn)
+
+# Final Model Prediction  -------------------------------------------------
+
+churn_test <- read.csv("churn_test.csv")
+names(churn_test) <- tolower(names(churn_test))
+churn_test <- dataPreparationTest(churn_test) 
+
+data_churn <- predict(rf_model, newdata = churn_test)
+final_data <- data.frame(churn_test,churn)
 
   
 
-
-#### back-up code
-
-# gradient boosting
-
-fitControl <- trainControl(
-  method = "repeatedcv",
-  number = 10,
-  repeats = 10,
-  classProbs = TRUE,
-  summaryFunction = twoClassSummary)
-
-gbmGrid <-  expand.grid(interaction.depth = c(1, 5, 9),
-                        n.trees = (1:30)*50,
-                        shrinkage = 0.1,
-                        n.minobsinnode = 20)
-
-gbmFit <- train(churn ~ ., data = training,
-                method = "gbm",
-                trControl = fitControl,
-                verbose = FALSE,
-                allowParallel=TRUE,
-                tuneGrid = gbmGrid
-)
-
-#
-predict(gbmFit3, newdata = head(testing))
-
-
-# performance and comparing different model performance 
-confusionMatrix(data = plsClasses, testing$Class)
-
-resamps <- resamples(list(RF = rf_model,
-                          GBM = gbmFit1))
-trellis.par.set(theme1)
-bwplot(resamps, layout = c(3, 1))
-
-# alternatives to compare performance 
-
-difValues <- diff(resamps)
-bwplot(difValues, layout = c(3, 1))
 

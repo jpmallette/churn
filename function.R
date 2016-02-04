@@ -1,22 +1,105 @@
 # function for prediction 
 
+dataPreparationValidation <- function(churn_validation) {
+  
+  churn_validation <- remove.clientid(churn_validation)
+  churn_validation <- false_missing_value(churn_validation)
+  churn_validation <- churn_as_factor(churn_validation)
+  churn_validation <- integer_to_numeric_var(churn_validation)
+  
+  churn_validation <- new.variables(churn_validation)
+  churn_validation <- new.interaction.variables(churn_validation)
+  churn_validation <- delete_variables_too_many_missing_value(churn_validation)
+  
+  numeric_features   <- churn_validation[,sapply(churn_validation,is.numeric)]
+  numeric_features$churn   <- churn_validation$churn
+  
+  churn_validation   <- data.frame(apply(numeric_features,
+                                              2,median.imputation))
+  return(churn_validation)
+}
+
+dataPreparationTest <- function(churn_test) {
+  
+  churn_test <- false_missing_value(churn_test)
+  churn_test <- integer_to_numeric_var(churn_test)
+  churn_test <- new.variables(churn_test)
+  churn_test <- new.interaction.variables(churn_test)
+  churn_test <- delete_variables_too_many_missing_value(churn_test)
+  
+  numeric_features   <- churn_test[,sapply(churn_test,is.numeric)]
+  numeric_features$churn   <- churn_test$churn
+  churn_test   <- data.frame(apply(numeric_features,
+                                         2,median.imputation))
+  return(churn_test)
+}
+
+
+variables_selection_tree <- function(numeric_features_churn)  {
+  
+rpart_tree <- rpart(churn ~ ., data = numeric_features_churn,
+                    cp = c(0.001),maxdepth = 5) 
+
+output <- head(varImp(rpart_tree),n = 30)
+output[order(-output$Overall),,drop=FALSE]
+important_features <- rownames(subset(output,Overall > 0))
+return(important_features)
+
+}
+
+remove.clientid <- function(churn_train) {
+  churn_train <- churn_train[ , -which(names(churn_train) == 'clientid')]
+  return(churn_train)
+}
+
+false_missing_value <- function(churn_train) {
+  churn_train$eqpdays <- ifelse(churn_train$eqpdays < 0, 0,churn_train$eqpdays)
+  return(churn_train)
+} 
+churn_as_factor <- function(churn_train) {
+  churn_train$churn <- as.factor(churn_train$churn)
+  return(churn_train)
+}
+
+integer_to_numeric_var <- function(churn_train) {
+  integer_var <- churn_train[,sapply(churn_train,is.integer)]
+  integer_var_to_num <- sapply(integer_var,as.numeric)
+  churn_train[,sapply(churn_train,is.integer)] <- integer_var_to_num
+  return(churn_train)
+}
+
+delete_variables_too_many_missing_value <- function(churn_train) {
+   
+  n_row <- nrow(churn_train)
+  missing <- sapply(churn_train, function(x) sum(is.na(x)))
+  percent_missing <- missing/n_row
+  keep_column <- percent_missing[which(percent_missing <= 0.50)]
+  keep_column_name <- names(keep_column)
+  churn_train <- churn_train[,c(keep_column_name)] 
+  return(churn_train)
+}
+
+# shrink categorical variables 
+
+# recode(myColors, "'red'='rot'; 'blue'='blau'; 'purple'='violett'")
+# recode(myColors, "c('red', 'blue')='basic'; else='complex'")
+
 new.variables <- function(churn_train) {
   
   suppressMessages(attach(churn_train))
   
+  # minutes used
   changemou3_6       <- avg3mou - avg6mou 
   changemou3_life    <- avg3mou - avgmou  
   changeqty3_6       <- avg3qty - avg6qty   
   changeqty3_life    <- avg3qty  - avgqty 
   changerev3_6       <- avg3rev - avg6rev  
-  changerev3_life    <- avg3rev - avgrev 
   
   changemou3_div_6       <- avg3mou / avg6mou 
   changemou3_div_life    <- avg3mou / avgmou  
   changeqty3_div_6       <- avg3qty / avg6qty   
   changeqty3_div_life    <- avg3qty  / avgqty 
   changerev3_div_6       <- avg3rev / avg6rev  
-  changerev3_div_life    <- avg3rev / avgrev 
   
   # change in handset price 
   change_hnd_price <- hnd_price - pre_hnd_price  
@@ -35,87 +118,61 @@ new.variables <- function(churn_train) {
   gen_min_per_call <- totmou/totcalls
   
   df <- data.frame(changemou3_6,changemou3_life,changeqty3_6,changeqty3_life,
-                   changerev3_6,changerev3_life,changemou3_div_6,changemou3_div_life,
-                   changeqty3_div_6,changeqty3_div_life,changerev3_div_6,changeqty3_div_life,
-                   changerev3_div_6,changerev3_div_life,change_hnd_price,
+                   changemou3_div_6,changemou3_div_life,
+                   changeqty3_div_6,changeqty3_div_life,changerev3_div_6,
+                   change_hnd_price,
                    int_model_hnd_price,ratio_att_complete,ratio_drop_complete,rat1,rat3,
                    pct_paid_vs_reccu_charges_3,pct_paid_vs_reccu_charges_6,gen_min_per_call
                    )
-  return(df)
+  churn_train <- data.frame(churn_train,df)
+  return(churn_train)
   }
 
-# interactions variables identified with the decision tree 
-# " we can find meaningful interaction variables by running decision tree
-# " by looking at two or three features at the time, we can find 
-#  interesting interaction features 
-
-# t <- train(churn ~ eqpdays + change_hnd_price,churn_train,method = "rpart",cp=0.002,maxdepth=8)
-# plot(t$finalmodel)
-
-#  add log variables 
-
-# Changing integer variables to numeric variables
-new.log.variables <- function(churn_train) {
-
-# convert all integer to numeric
-integer_var <- churn_train[,sapply(churn_train,is.integer)]
-integer_var_to_num <- sapply(integer_var,as.numeric)
-churn_train[,sapply(churn_train,is.integer)] <- integer_var_to_num
-
-# subset only numeric column
-numeric_var <- churn_train[,sapply(churn_train,is.numeric)]
-
-# replace NA with median imputation. Need to recode NA with Null
-preProcess(numeric_var, method = c("medianImpute"))
-          
-# find all the minimum of all column 
-columum_min <- sapply(numeric_var,min)
-
-# add the minimum to all column 
-
-# transform all variables to log 
-
-# return df
-return(df)
-}
-
-
-
-
-
+# found with the decision Tree algorithm 
 new.interaction.variables <- function(churn_train) {
   
   suppressMessages(attach(churn_train))
-  
+    
   eqpdays_change_hnd_price    <- eqpdays * change_hnd_price  
-  eqpdays_log_months          <- eqpdays * log_months 
+  eqpdays_months              <- eqpdays * months 
   eqpdays_changemou3_life     <- eqpdays * changemou3_life
-  change_hnd_price_log_months <- change_hnd_price * log_months  
-  log_months_charge_vs_basic  <- log_months * charge_vs_basic  
-  changemou3_life_log_months  <- changemou3_life * log_months  
-  log_months_hnd_price        <- log_months * hnd_price  
-  log_mou_mean_change_mou     <- log_mou_mean * change_mou      
+  change_hnd_price_months     <- change_hnd_price * months  
+  changemou3_life_months      <- changemou3_life * months  
+  months_hnd_price            <- months * hnd_price  
+  mou_mean_change_mou         <- mou_mean * change_mou      
   changemou3_life_change_mou  <- changemou3_life * change_mou  
-  ch_vs_b_log_mou_o_r         <- charge_vs_basic * log_mou_opkv_range  
-  months_handsetprice         <- months * hnd_price   
   months_pre_hnd_price        <- months * pre_hnd_price 
   eq_hnd_price                <- eqpdays * hnd_price 
-  change_h_p_ch_vs_ba         <- change_hnd_price *  charge_vs_basic  
   
-  data.frame(eqpdays_change_hnd_price,eqpdays_log_months,eqpdays_changemou3_life,
-             change_hnd_price_log_months,change_hnd_price_log_months,log_months_charge_vs_basic,
-             changemou3_life_log_months,log_months_hnd_price,log_mou_mean_change_mou,
-             changemou3_life_change_mou,ch_vs_b_log_mou_o_r,months_handsetprice,months_pre_hnd_price,
-             eq_hnd_price,change_h_p_ch_vs_ba)
   
-  return(df)
+  df <- data.frame(eqpdays_change_hnd_price,eqpdays_months,eqpdays_changemou3_life,
+             change_hnd_price_months,
+             changemou3_life_months,months_hnd_price,mou_mean_change_mou,
+             changemou3_life_change_mou,months_pre_hnd_price,
+             eq_hnd_price)
+  
+  churn_train <- data.frame(churn_train,df)
+  return(churn_train)
 }
 
+formula.creation <- function(features_names,predictor_name) {
+  
+  for (features_position in 1:length(features_names)) {
+    
+    if (features_position == 1) {
+      formula <- paste(predictor_name,'~',features_names[features_position])
+    } else {
+      append_formula <- paste(' +',features_names[features_position])
+      formula <- paste0(formula,append_formula)
+    }
+  }
+  return(formula)
+}
 
-
-
-# shrink categorical variables 
-
-# recode(myColors, "'red'='rot'; 'blue'='blau'; 'purple'='violett'")
-# recode(myColors, "c('red', 'blue')='basic'; else='complex'")
-
+median.imputation <- function(features) {
+  features<-as.numeric(as.character(features))
+  features[is.na(features)] <- median(features, na.rm=TRUE)
+  features[is.infinite(features)] <- median(features, na.rm=TRUE)
+  features[is.nan(features)] <- median(features, na.rm=TRUE)
+  return(features)
+}
