@@ -62,7 +62,9 @@ churn_train <- delete_variables_too_many_missing_value(churn_train)
 table(sapply(churn_train,class))
 
 # Model Selection ----------------------------------------------------
-# first test only consider numeric variables
+# Only consider numeric variables for demonstration.
+# categorical variables are longueur to treat
+
 numeric_features_churn <- churn_train[,sapply(churn_train,is.numeric)]
 numeric_features_churn$churn <- churn_train$churn
 
@@ -100,7 +102,5 @@ churn_test <- dataPreparationTest(churn_test)
 
 data_churn <- predict(rf_model, newdata = churn_test)
 final_data <- data.frame(churn_test,churn)
-
-  
 
 
