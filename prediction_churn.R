@@ -52,12 +52,12 @@ sapply(churn_train, function(x) sum(is.na(x)))
 
 # Quick Data preparation ----------------------------------------------------
 churn_train <- remove.clientid(churn_train)
-churn_train <- false_missing_value(churn_train)
-churn_train <- churn_as_factor(churn_train)
-churn_train <- integer_to_numeric_var(churn_train)
+churn_train <- false.missing.value(churn_train)
+churn_train <- churn.as.factor(churn_train)
+churn_train <- integer.to.numeric_var(churn_train)
 churn_train <- new.variables(churn_train)
 churn_train <- new.interaction.variables(churn_train)
-churn_train <- delete_variables_too_many_missing_value(churn_train)
+churn_train <- delete.variables.too.many.missing.value(churn_train)
 
 table(sapply(churn_train,class))
 
@@ -71,18 +71,21 @@ numeric_features_churn$churn <- churn_train$churn
 table(sapply(numeric_features_churn,class))
 
 # Quick variable selection with tree. 
-important_features <- variables_selection_tree(numeric_features_churn)
+important_features <- variables.selection.tree(numeric_features_churn)
 
 # Quick prediction with random Forest
 numeric_features_subset <- subset(numeric_features_churn, select = important_features)
 numeric_features_subset <- data.frame(apply(numeric_features_subset,
                                             2,median.imputation))
 
+# small number of ntree for fast prediction. I encourage the use of 
+# https://www.dominodatalab.com/ for scability
 rf_model <- train(x = numeric_features_subset,
                  y = churn_train$churn,
                  preProcess = c('scale','center'),
                  method = "rf",
-                 ntree=1000)
+                 allowParallel = T,
+                 ntree=10)
 
 # Validation Result -------------------------------------------------------
 

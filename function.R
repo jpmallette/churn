@@ -3,13 +3,13 @@
 dataPreparationValidation <- function(churn_validation) {
   
   churn_validation <- remove.clientid(churn_validation)
-  churn_validation <- false_missing_value(churn_validation)
-  churn_validation <- churn_as_factor(churn_validation)
-  churn_validation <- integer_to_numeric_var(churn_validation)
+  churn_validation <- false.missing.value(churn_validation)
+  churn_validation <- churn.as.factor(churn_validation)
+  churn_validation <- integer.to.numeric.var(churn_validation)
   
   churn_validation <- new.variables(churn_validation)
   churn_validation <- new.interaction.variables(churn_validation)
-  churn_validation <- delete_variables_too_many_missing_value(churn_validation)
+  churn_validation <- delete.variables.too.many.missing.value(churn_validation)
   
   numeric_features   <- churn_validation[,sapply(churn_validation,is.numeric)]
   numeric_features$churn   <- churn_validation$churn
@@ -21,11 +21,11 @@ dataPreparationValidation <- function(churn_validation) {
 
 dataPreparationTest <- function(churn_test) {
   
-  churn_test <- false_missing_value(churn_test)
-  churn_test <- integer_to_numeric_var(churn_test)
+  churn_test <- false.missing.value(churn_test)
+  churn_test <- integer.to.numeric.var(churn_test)
   churn_test <- new.variables(churn_test)
   churn_test <- new.interaction.variables(churn_test)
-  churn_test <- delete_variables_too_many_missing_value(churn_test)
+  churn_test <- delete.variables.too.many.missing.value(churn_test)
   
   numeric_features   <- churn_test[,sapply(churn_test,is.numeric)]
   numeric_features$churn   <- churn_test$churn
@@ -35,7 +35,7 @@ dataPreparationTest <- function(churn_test) {
 }
 
 
-variables_selection_tree <- function(numeric_features_churn)  {
+variables.selection.tree <- function(numeric_features_churn)  {
   
 rpart_tree <- rpart(churn ~ ., data = numeric_features_churn,
                     cp = c(0.001),maxdepth = 5) 
@@ -52,23 +52,23 @@ remove.clientid <- function(churn_train) {
   return(churn_train)
 }
 
-false_missing_value <- function(churn_train) {
+false.missing.value <- function(churn_train) {
   churn_train$eqpdays <- ifelse(churn_train$eqpdays < 0, 0,churn_train$eqpdays)
   return(churn_train)
 } 
-churn_as_factor <- function(churn_train) {
+churn.as.factor <- function(churn_train) {
   churn_train$churn <- as.factor(churn_train$churn)
   return(churn_train)
 }
 
-integer_to_numeric_var <- function(churn_train) {
+integer.to.numeric.var <- function(churn_train) {
   integer_var <- churn_train[,sapply(churn_train,is.integer)]
   integer_var_to_num <- sapply(integer_var,as.numeric)
   churn_train[,sapply(churn_train,is.integer)] <- integer_var_to_num
   return(churn_train)
 }
 
-delete_variables_too_many_missing_value <- function(churn_train) {
+delete.variables.too.many.missing.value <- function(churn_train) {
    
   n_row <- nrow(churn_train)
   missing <- sapply(churn_train, function(x) sum(is.na(x)))
@@ -78,11 +78,6 @@ delete_variables_too_many_missing_value <- function(churn_train) {
   churn_train <- churn_train[,c(keep_column_name)] 
   return(churn_train)
 }
-
-# shrink categorical variables 
-
-# recode(myColors, "'red'='rot'; 'blue'='blau'; 'purple'='violett'")
-# recode(myColors, "c('red', 'blue')='basic'; else='complex'")
 
 new.variables <- function(churn_train) {
   
